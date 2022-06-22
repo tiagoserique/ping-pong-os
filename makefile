@@ -2,7 +2,7 @@ CFLAGS = -Wall -std=c99
 objects = queue.o testafila.o
 
 all: $(objects)
-	gcc -Wall $(objects) -o teste
+	gcc $(CFLAGS) $(objects) -o teste
 
 
 testafila.o: testafila.c 

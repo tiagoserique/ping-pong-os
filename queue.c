@@ -8,8 +8,7 @@
 //------------------------------------------------------------------------------
 // Conta o numero de elementos na fila
 // Retorno: numero de elementos na fila
-
-int queue_size (queue_t *queue){
+int queue_size(queue_t *queue){
 	// check if the queue is empty
 	if ( !queue )
 		return 0;
@@ -30,8 +29,7 @@ int queue_size (queue_t *queue){
 // usa a biblioteca. Essa função deve ter o seguinte protótipo:
 //
 // void print_elem (void *ptr) ; // ptr aponta para o elemento a imprimir
-
-void queue_print (char *name, queue_t *queue, void print_elem (void*) ){
+void queue_print(char *name, queue_t *queue, void print_elem (void*) ){
 	printf("%s: [", name);
 
 	// check if the queue is empty
@@ -60,8 +58,7 @@ void queue_print (char *name, queue_t *queue, void print_elem (void*) ){
 // - o elemento deve existir
 // - o elemento nao deve estar em outra fila
 // Retorno: 0 se sucesso, <0 se ocorreu algum erro
-
-int queue_append (queue_t **queue, queue_t *elem){
+int queue_append(queue_t **queue, queue_t *elem){
 	// check if the queue exists
 	if ( !queue ){
 		fprintf(stderr, "The queue doesn't exist\n");
@@ -126,8 +123,7 @@ int queue_append (queue_t **queue, queue_t *elem){
 // - o elemento deve existir
 // - o elemento deve pertencer a fila indicada
 // Retorno: 0 se sucesso, <0 se ocorreu algum erro
-
-int queue_remove (queue_t **queue, queue_t *elem){
+int queue_remove(queue_t **queue, queue_t *elem){
 	// check if the queue exists
 	if ( !queue ){
 		fprintf(stderr, "The queue doesn't exist\n");

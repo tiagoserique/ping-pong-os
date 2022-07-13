@@ -1,4 +1,7 @@
 // GRR20195138 Tiago Serique Valadares
+// PingPongOS - PingPong Operating System
+// Prof. Carlos A. Maziero, DINF UFPR
+// Versão 1.4 -- Janeiro de 2022
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,6 +42,8 @@ void ppos_init(){
     MainTask.next   = NULL;
     MainTask.id     = tid;
     MainTask.status = TASK_RUNNING;
+    MainTask.static_prio  = DEFAUL_PRIO;
+    MainTask.dynamic_prio = DEFAUL_PRIO;
 
     // set main task as current task
     CurrentTask = &MainTask;
@@ -78,10 +83,12 @@ int task_create(task_t *task, void (*start_routine)(void *), void *arg){
 
     // fill the TCB with the information of the task
     tid++;
-    task->prev   = NULL;
-    task->next   = NULL;
-    task->id     = tid;
+    task->prev = NULL;
+    task->next = NULL;
+    task->id   = tid;
     task->status = TASK_READY;
+    task->static_prio  = DEFAUL_PRIO;
+    task->dynamic_prio = DEFAUL_PRIO;
 
     // create the task context
     task->context.uc_stack.ss_sp    = stack;
@@ -165,19 +172,51 @@ int task_id(){
 // operações de escalonamento ==================================================
 
 task_t *scheduler(){
-    // return the first task in the ready queue
-    return ReadyQueue;
+    task_t *taskMaxPriority, *firstTaskReady, *task;
+    
+    // get the first task ready on the queue
+    firstTaskReady = ReadyQueue;
+
+    // check if the queue is empty
+    if ( !firstTaskReady ) return NULL;
+    
+    // update the task's dynamic priority
+    task = firstTaskReady->next;
+
+    firstTaskReady->dynamic_prio -= TASK_AGING;
+    while ( task != firstTaskReady ){
+        task->dynamic_prio -= TASK_AGING;
+        task = task->next;
+    }
+
+    // search for the task with the highest priority
+    taskMaxPriority = firstTaskReady;
+    task = firstTaskReady->next;
+
+    while ( task != firstTaskReady ){
+        if ( task->dynamic_prio <= taskMaxPriority->dynamic_prio )
+            taskMaxPriority = task;
+     
+        task = task->next;
+    }
+
+    // reset the task's dynamic priority to task's static priority
+    taskMaxPriority->dynamic_prio = task_getprio(taskMaxPriority);
+
+    return taskMaxPriority;
 }
 
 
 void dispatcher(){
     // while there are user tasks 
     while ( userTask ){
+
         // get the next task
         task_t *nextTask = scheduler();
 
-        // if the scheduler choose a task
+        // if the scheduler choose a task and it is not null
         if ( nextTask ){
+
             // set status to running
             nextTask->status = TASK_RUNNING;
             
@@ -192,14 +231,12 @@ void dispatcher(){
                 case TASK_READY:
                     // add the task to the ready queue
                     queue_append((queue_t **) &ReadyQueue, (queue_t *) nextTask);
-                    break;
-                /* case TASK_BLOCKED:
-                    task_blocked(nextTask);
-                    break;*/
+                break;
+                
                 case TASK_FINISHED:
                     // destroy the task's stack
                     free(nextTask->context.uc_stack.ss_sp);
-                    break;
+                break;
             }
         }
     }
@@ -218,3 +255,31 @@ void task_yield(){
     // pass the control to the dispatcher
     task_switch(&DispatcherTask);
 }
+
+
+void task_setprio (task_t *task, int prio){
+    task_t *cTask = CurrentTask;
+
+    // check if the task is null
+    // if it is, set the task's priority to the current task
+    // otherwise, set the task's priority to the given task with the given priority
+    if ( !task ){
+        cTask->static_prio  = prio;
+        cTask->dynamic_prio = prio;
+    }  
+    else { 
+        task->static_prio  = prio;
+        task->dynamic_prio = prio;
+    }
+}
+
+
+int task_getprio (task_t *task){
+    task_t *cTask = CurrentTask;
+
+    // check if the task is null
+    // if it is, return the current task's priority
+    // otherwise, return the task's priority
+    return ( !task ) ? cTask->static_prio : task->static_prio;
+}
+

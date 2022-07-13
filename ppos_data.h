@@ -13,10 +13,13 @@
 
 #define STACKSIZE 64*1024
 
-#define TASK_READY 1
-#define TASK_RUNNING 2
-#define TASK_BLOCKED 3
+#define TASK_READY    1
+#define TASK_RUNNING  2
+#define TASK_BLOCKED  3
 #define TASK_FINISHED 4
+
+#define DEFAUL_PRIO 0
+#define TASK_AGING  1
 
 // Estrutura que define um Task Control Block (TCB)
 typedef struct task_t
@@ -26,6 +29,8 @@ typedef struct task_t
   ucontext_t context ;			      // contexto armazenado da tarefa
   short status ;			            // pronta, rodando, suspensa, ...
   short preemptable ;			        // pode ser preemptada?
+  short static_prio;              // prioridade estática
+  short dynamic_prio;             // prioridade dinâmica
   // ... (outros campos serão adicionados mais tarde)
 } task_t ;
 

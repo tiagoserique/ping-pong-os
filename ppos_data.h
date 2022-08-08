@@ -46,31 +46,43 @@ typedef struct task_t
     unsigned int activations;       // número de vezes que a tarefa foi ativada
 
     unsigned int awake_time;        // tempo em que a tarefa tem que ser acordada           
-  // ... (outros campos serão adicionados mais tarde)
 } task_t ;
 
 // estrutura que define um semáforo
-typedef struct
+typedef struct semaphore_t
 {
-  // preencher quando necessário
+    int count;                        // quantidade de tarefas na fila
+    int destroyed;                    // indica se o semáforo foi destruído
+
+    task_t *queue;                    // fila de tarefas esperando no semáforo
 } semaphore_t ;
 
 // estrutura que define um mutex
-typedef struct
+typedef struct mutex_t
 {
   // preencher quando necessário
 } mutex_t ;
 
 // estrutura que define uma barreira
-typedef struct
+typedef struct barrier_t
 {
   // preencher quando necessário
 } barrier_t ;
 
 // estrutura que define uma fila de mensagens
-typedef struct
+typedef struct mqueue_t
 {
-  // preencher quando necessário
+    int msg_size;                     // tamanho dos dados da mensagem
+    int max_msgs;                     // tamanho máximo da fila
+    int count_msgs;                   // número de mensagens na fila
+
+    void *queue;                      // fila de mensagens
+    int start;                        // índice do primeiro elemento da fila
+    int end;                          // índice do último elemento da fila
+
+    semaphore_t s_vaga;               // sinaliza a vaga da fila
+    semaphore_t s_item;               // sinaliza o item da fila
+    semaphore_t s_buffer;             // sinaliza o buffer da fila
 } mqueue_t ;
 
 #endif

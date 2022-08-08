@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/time.h>
+#include <string.h>
 #include "ppos.h"
 #include "queue.h"
 
@@ -40,7 +41,7 @@ task_t mainTask, *currentTask, dispatcherTask;
 task_t *readyQueue, *suspendedQueue;
 
 // tasks IDs, counter of user tasks and quantum counter
-int tid, userTask, quantum;
+int tid, userTask, quantum, lock = 0;
 
 // register the time elapsed since the first tick
 unsigned int system_time;
@@ -241,7 +242,8 @@ void task_exit(int exit_code){
     #endif
 
     while ( cTask->suspendedQueue ){
-        task_resume((task_t *) cTask->suspendedQueue, (task_t **) &cTask->suspendedQueue);
+        task_resume((task_t *) cTask->suspendedQueue, 
+                                            (task_t **) &cTask->suspendedQueue);
     }
 
 
@@ -279,7 +281,7 @@ void awake_tasks(){
     
     
     #ifdef DEBUG
-        queue_print("awake_tasks: Suspended queue", (queue_t *) suspendedQueue, 
+    queue_print("awake_tasks: Suspended queue", (queue_t *) suspendedQueue, 
                                                         (void *) print_queue);
     #endif
 
@@ -326,9 +328,6 @@ void tick_handler(){
 
             // set the task's status to ready
             cTask->status = TASK_READY;
-
-            // reset the quantum
-            quantum = QUANTUM_DEFAULT;
 
             task_yield();
         }
@@ -394,6 +393,9 @@ void dispatcher(){
             nextTask->status = TASK_RUNNING;
             queue_remove((queue_t **) &readyQueue, (queue_t *) nextTask);
 
+
+            // reset the quantum
+            quantum = QUANTUM_DEFAULT;
 
             // switch to the next task
             task_switch(nextTask);
@@ -513,5 +515,206 @@ void task_sleep (int t){
 unsigned int systime(){
     // return the system time
     return system_time;
+}
+
+// operações de IPC ============================================================
+
+// semáforos
+
+ 
+void enter_cs(int *lock){
+    // atomic OR (Intel macro for GCC)
+    while (__sync_fetch_and_or (lock, 1)) ;   // busy waiting
+}
+
+ 
+void leave_cs(int *lock){
+    (*lock) = 0 ;
+}
+
+
+int sem_create(semaphore_t *s, int value){
+    if ( !s ) return -1;
+
+    // initialize the semaphore
+    s->queue = NULL;
+    s->count = value;
+    s->destroyed = 0;
+
+    return 0;
+}
+
+
+int sem_down(semaphore_t *s){
+    if ( !s || s->destroyed ) return -1;
+
+    // enter the critical section
+    enter_cs(&lock);
+    
+
+    // decrement the semaphore's count
+    s->count--;
+
+
+    // if the semaphore's count is less than zero, suspend the current task
+    task_t *cTask = currentTask;
+    if ( s->count < 0 ){ 
+        // remove the task from the ready queue
+        queue_remove((queue_t **) &readyQueue, (queue_t *) cTask);
+
+        // set the task's status to suspended
+        cTask->status = TASK_SUSPENDED;
+
+        // append the task to the given queue
+        queue_append((queue_t **) &s->queue, (queue_t *) cTask);
+    }
+
+
+    // leave the critical section
+    leave_cs(&lock);
+
+    // pass the control to the dispatcher
+    if ( cTask->status == TASK_SUSPENDED ) task_yield();
+
+    return 0;
+}
+
+
+int sem_up(semaphore_t *s){
+    if ( !s || s->destroyed ) return -1;
+    
+    // enter the critical section
+    enter_cs(&lock);
+
+
+    // increment the semaphore's count
+    s->count++;
+
+    // if there is a task suspended in the semaphore's queue, awake it and 
+    // remove it from the queue
+    if ( s->count <= 0 ) task_resume((task_t *) s->queue, (task_t **) &s->queue);
+
+
+    // leave the critical section
+    leave_cs(&lock);
+
+    return 0;
+}
+
+
+int sem_destroy(semaphore_t *s){
+    if ( !s || s->destroyed ) return -1;
+    
+    // remove all tasks suspended in the semaphore's queue
+    while ( s->count <= 0 ) sem_up(s);
+
+    s->destroyed = 1;
+
+    return 0;
+}
+
+
+// filas de mensagens
+
+
+int mqueue_create(mqueue_t *queue, int max, int size){
+    queue->max_msgs   = max;
+    queue->msg_size   = size;
+    queue->count_msgs = 0;
+
+    queue->queue = calloc(max, size);
+
+    // check if the queue was created successfully
+    if ( !queue->queue ){
+        perror("mqueue_create: malloc");
+        exit(-1);
+    }
+
+    queue->start = 0;
+    queue->end   = 0;
+
+    queue->s_item.count   = 0;
+    queue->s_buffer.count = 1;
+    queue->s_vaga.count   = max;
+
+    queue->s_item.queue   = NULL;
+    queue->s_vaga.queue   = NULL;
+    queue->s_buffer.queue = NULL;
+
+    return 0;
+}
+
+
+int mqueue_send(mqueue_t *queue, void *msg){
+    // check if the queue or the message is null
+    if ( !queue || !msg ) return -1;
+
+    if ( sem_down(&queue->s_vaga) ) return -1;
+    if ( sem_down(&queue->s_buffer) ) return -1;
+
+    // get the position of the message in the queue
+    void *position = queue->queue + ( queue->end * queue->msg_size );
+
+    // set the message from in the queue 
+    memcpy(position, msg, queue->msg_size);
+
+    queue->count_msgs++;
+
+    // update the queue's end position
+    queue->end = ( queue->end + 1 ) % queue->max_msgs;
+
+    if ( sem_up(&queue->s_buffer) ) return -1;
+    if ( sem_up(&queue->s_item) ) return -1;
+
+    return 0;
+}
+
+
+int mqueue_recv(mqueue_t *queue, void *msg){
+    // check if the queue or the message is null
+    if ( !queue || !msg ) return -1;
+
+    if ( sem_down(&queue->s_item) ) return -1;
+    if ( sem_down(&queue->s_buffer) ) return -1;
+    
+    // get the position of the message in the queue
+    void *position = queue->queue + ( queue->start * queue->msg_size );
+
+    // get the message from the queue 
+    memcpy(msg, position, queue->msg_size);
+
+    queue->count_msgs--;
+
+    // update the queue's start position
+    queue->start = ( queue->start + 1 ) % queue->max_msgs;
+    
+    if ( sem_up(&queue->s_buffer) ) return -1;
+    if ( sem_up(&queue->s_vaga) ) return -1;
+
+    return 0;
+}
+
+
+int mqueue_destroy(mqueue_t *queue){
+    // check if the queue is null
+    if ( !queue ) return -1;
+
+    // remove all items in the queue
+    if ( queue->queue ) free(queue->queue);
+
+    // wake up all tasks waiting in the semaphores
+    if ( sem_destroy(&queue->s_item) ) return -1;
+    if ( sem_destroy(&queue->s_vaga) ) return -1;
+    if ( sem_destroy(&queue->s_buffer) ) return -1;
+
+    return 0;
+}
+
+
+int mqueue_msgs(mqueue_t *queue){
+    // check if the queue is null
+    if ( !queue ) return -1;
+
+    return queue->count_msgs;
 }
 

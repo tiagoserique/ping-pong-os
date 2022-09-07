@@ -9,6 +9,7 @@
 #define __PPOS_DATA__
 
 #include <ucontext.h>		// biblioteca POSIX de trocas de contexto
+#include "queue.h"
 
 
 #define STACKSIZE 64*1024
@@ -24,6 +25,12 @@
 #define TASK_AGING  1
 
 #define QUANTUM_DEFAULT 20
+
+#define TRUE  1
+#define FALSE 0
+
+// print the elements of the queue test
+void print_queue(void *element);
 
 // Estrutura que define um Task Control Block (TCB)
 typedef struct task_t
@@ -84,6 +91,14 @@ typedef struct mqueue_t
     semaphore_t s_item;               // sinaliza o item da fila
     semaphore_t s_buffer;             // sinaliza o buffer da fila
 } mqueue_t ;
+
+
+
+extern task_t *readyQueue;     // fila de tarefas prontas
+extern task_t *suspendedQueue; // fila de tarefas suspensas
+extern task_t *currentTask;
+extern task_t dispatcherTask;
+extern int isUserTask;
 
 #endif
 
